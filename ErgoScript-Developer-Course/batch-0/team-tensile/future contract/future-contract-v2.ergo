@@ -1,6 +1,6 @@
 //----------------- Future Contract Box Registers------------------
-   // R4(0)[Boolean]: funded
-    // R5(0)[int]: expiryHeight
+   // R4[Boolean]: funded
+    // R5[int]: expiryHeight
     // R6(0)[long]: jobID
     // R6(1)[long]: exRate
     // R6(2)[long]: amountProv
@@ -8,66 +8,67 @@
     // R7(0)[Coll[Byte]]: tokenID1
     // R7(1)[Coll[Byte]]: openerPK
     // R7(2)[Coll[Byte]]: funderPK
+    //-----------------
+    // hard coded values (see off-chain code)
+    // _miningFee - Parameters.Minfee
+    // _ergInNanoErg - Parameters.OneErg
 //----------------- Future Contract Box Registers------------------
 
 // ----------------------------------------
 // expiration transaction 
 // ----------------------------------------
-    if(INPUTS.size == 1 && CONTEXT.HEIGHT > SELF.R5(0)[int].get){
+    if(INPUTS.size == 1 && (HEIGHT > SELF.R5[Int].get)){
 
-    val ErgInNanoErg: long      = 1000000000L
-    val miningFee: long = 0.001L * ErgInNanoErg
+        val funded: Boolean         = SELF.R4[Boolean].get
+        val expiryInFCB: Int        = SELF.R5[Int].get
 
-    val funded: Boolean         = 	SELF.R4(0)[Boolean].get
-    val expiryInFCB: int        = SELF.R5(0)[int].get
+        val xrateInFCB: Long        = SELF.R6[Coll[Long]].get(1)
+        val amountProvInFCB: Long   = SELF.R6[Coll[Long]].get(2) //in nanoErg
+        val amountNeededInFCB: Long = SELF.R6[Coll[Long]].get(3) // in SigUSD
 
-    val xrateInFCB: long        = SELF.R6(1)[long].get
-    val amountProvInFCB: long   = SELF.R6(2)[long].get //in nanoErg
-    val amountNeededInFCB: long = SELF.R6(3)[long].get // in SigUSD
+        val tokenID1InFCB: Coll[Byte] = SELF.R7[Coll[Coll[Byte]]].get(0)
+        val openerpkInFCB: Coll[Byte] = SELF.R7[Coll[Coll[Byte]]].get(1)
+        val funderpkInFCB: Coll[Byte] = SELF.R7[Coll[Coll[Byte]]].get(2)
 
-    val tokenID1InFCB: Coll[Byte] = SELF.R7(0)[Coll[Byte]].get
-    val openerpkInFCB: Coll[Byte] = SELF.R7(1)[Coll[Byte]].get
-    val funderpkInFCB: Coll[Byte] = SELF.R7(2)[Coll[Byte]].get
-
-    val OpenerBox: Box              = OUTPUT(0)
+        val OpenerBox: Box              = OUTPUTS(0)
 
     // ---------------------payout boolean-------------------
     // INPUTS:	FCB	---> OUTPUTS:	T1	T2	Fee
     //------------------------------------------------------
-    val payout: Boolean = allOf(Coll(
-        funded,
+        val payout: Boolean = allOf(Coll(
+            funded,
 
         // all tokens in FCB are sent to Openerpk
-        OpenerBox.propositionBytes == openerpkInFCB.get, //OUTPUT(0)
-        OpenerBox.tokens(0)._1.get == tokenID1InFCB.get, // in sigUSD
-        OpenerBox.tokens(0)._2.get == SELF.tokens(0)._2.get,
+            OpenerBox.propositionBytes == openerpkInFCB, //OUTPUT(0)
+            OpenerBox.tokens(0)._1 == tokenID1InFCB, // in sigUSD
+            OpenerBox.tokens(0)._2 == SELF.tokens(0)._2,
 
         // Erg is sent to funder, but calculated from sigUSD amount Needed value and exchangerate
-        OUTPUT(1).propositionBytes == funderpkInFCB.get,
+            OUTPUTS(1).propositionBytes == funderpkInFCB,
 
         // calculate ERG for T2 = tokens in FCB / exchange rate * nanoERG
         // in nanoErgs
-        OUTPUT(1).value == SELF.tokens(0)._2.get / xrateInFCB * ErgInNanoErg,
+            OUTPUTS(1).value == SELF.tokens(0)._2 / xrateInFCB * _ergInNanoErg,
         //Q: can use SELF.tokens(0)._2.get twice?
 
         // limit output size, as all remaining erg should be sent to T1 (OpenerBox)
         // to prevent them from being stolen
-        OUTPUT.size==3 //
-    ))
+            OUTPUTS.size == 3 //
+        ))
     // -------------------------refund boolean ---------------
     // INPUTS:	FCB	---> OUTPUTS:	T1	Fee
         //------------------------------------------------------
-    val refund: Boolean = allOf(Coll(
-        funded == false,
+        val refund: Boolean = allOf(Coll(
+            funded == false,
 
         // FCB should have no tokens, all ERG - Fee sent to OpenerBox
-        OpenerBox.propositionBytes == openerpkInFCB.get,
-        OpenerBox.value == SELF.value - miningFee
-    ))
-    sigmaProp(anyOf(Coll(
-      refund,
-      payout
-    )))
+            OpenerBox.propositionBytes == openerpkInFCB,
+            OpenerBox.value == SELF.value - _miningFee
+        ))
+        sigmaProp(anyOf(Coll(
+            refund,
+            payout
+        )))
     }
     else
     {
@@ -75,14 +76,12 @@
       // ---------------------funding existing FCB-------------------
       // INPUTS:	FCB	T2 ---> OUTPUTS: FCB (T2)*	Fee *if there is change
       // ----------------------------------------
-        val ErgInNanoErg: long      = 1000000000L
-        val miningFee: long = 0.001L * ErgInNanoErg
 
       //setting futureContractBox val
       val futureContractBox: Box = OUTPUTS(0)
 
       // --- jobID & these registers should stay the same
-       // R5(0)[int]: expiryHeight
+       // R5[int]: expiryHeight
           // R6(0)[long]: jobID
           // R6(1)[long]: exRate
           // R6(2)[long]: amountProv
@@ -90,47 +89,47 @@
           // R7(0)[Coll[Byte]]: tokenID1
           // R7(1)[Coll[Byte]]: openerPK
       val FCBOutputCheck: Boolean = allOf(Coll(
-        futureContractBox.propositionBytes.get == SELF.propositionBytes.get,
-        SELF.R5[Coll[int]].get == futureContractBox.R5[Coll[int]].get,
-        SELF.R6[Coll[long]].get == futureContractBox.R6[Coll[long]].get,
-        SELF.R7(0)[Coll[Byte]].get == futureContractBox.R7(0)[Coll[Byte]].get,
-        SELF.R7(1)[Coll[Byte]].get == futureContractBox.R7(1)[Coll[Byte]].get
+        futureContractBox.propositionBytes == SELF.propositionBytes,
+        SELF.R5[Int].get == futureContractBox.R5[Int].get,
+        SELF.R6[Coll[Long]].get == futureContractBox.R6[Coll[Long]].get,
+        SELF.R7[Coll[Coll[Byte]]].get(0) == futureContractBox.R7[Coll[Coll[Byte]]].get(0),
+        SELF.R7[Coll[Coll[Byte]]].get(1) == futureContractBox.R7[Coll[Coll[Byte]]].get(1)
       ))
 
       // increase FCB output (0) by miningFee for payout tx
-      val FCBvalueCheck: Boolean = (futureContractBox.value == SELF.value + miningFee)
+      val FCBvalueCheck: Boolean = (futureContractBox.value == SELF.value + _miningFee)
 
       // T2 funder box is
       val userBox1: Box = INPUTS(1)
-      val funderpk: Coll[Byte] = userBox1.propBytes.get
+      val funderpk: Coll[Byte] = userBox1.propositionBytes
 
       // updating FCB registers
       val setFundInfo: Boolean = allOf(Coll(
-        futureContractBox.R4(0)[Boolean].get == true,
-        futureContractBox.R7(2)[Coll[Byte]].get == funderpk.get
+        futureContractBox.R4[Boolean].get == true,
+        futureContractBox.R7[Coll[Coll[Byte]]].get(2) == funderpk
       ))
 
       // get funding info: tokenID and max amount
-      val requestedTokenID = SELF.R7(0)[Coll[Byte]].get
-      val tokenAmountNeeded = SELF.R6(3)[long].get
+      val requestedTokenID = SELF.R7[Coll[Coll[Byte]]].get(0)
+      val tokenAmountNeeded = SELF.R6[Coll[Long]].get(3)
 
       //check if funder has correct tokens
-      val funderHasTokensCheck: Boolean = userBox1.tokens(0)._1.get == requestedTokenID
+      val funderHasTokensCheck: Boolean = userBox1.tokens(0)._1 == requestedTokenID
 
       // check if only partial fund
       val partialfund: Boolean = allOf(Coll(
-        userBox1.tokens(0)._2.get < tokenAmountNeeded,
-        futureContractBox.tokens(0)._2.get == userBox1.tokens(0)._2.get,
-        futureContractBox.tokens(0)._1.get == requestedTokenID.get,
+        userBox1.tokens(0)._2 < tokenAmountNeeded,
+        futureContractBox.tokens(0)._2 == userBox1.tokens(0)._2,
+        futureContractBox.tokens(0)._1 == requestedTokenID,
         OUTPUTS.size == 2
         ))
 
       // funder has more tokens, fully fund it (return rest)
       val fullyfunded: Boolean = allOf(Coll(
-        futureContractBox.tokens(0)._2.get == tokenAmountNeeded,
-        futureContractBox.tokens(0)._1.get == requestedTokenID.get,
-        OUTPUT(2).value == miningFee,
-        OUTPUT(2).propositionBytes.get == funder.get,
+        futureContractBox.tokens(0)._2 == tokenAmountNeeded,
+        futureContractBox.tokens(0)._1 == requestedTokenID,
+        OUTPUTS(2).value == _miningFee,
+        OUTPUTS(2).propositionBytes == funderpk,
         OUTPUTS.size == 3
 
       ))
@@ -145,5 +144,5 @@
         ))
     )))
       }
-      else {false}
+      else {sigmaProp(false)}
     }
